@@ -1,4 +1,4 @@
-aiogram
-requests
+aiogram==3.4.1
 python-dotenv
 aiohttp
+requests
