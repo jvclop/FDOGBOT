@@ -1,63 +1,73 @@
 import os
-import requests
-from aiogram import Bot, Dispatcher, types, executor
-from dotenv import load_dotenv
-from aiohttp import web
 import asyncio
+import requests
+from dotenv import load_dotenv
+
+from aiogram import Bot, Dispatcher, types, Router
+from aiogram.enums import ParseMode
+from aiogram.types import Message
+from aiogram.client.default import DefaultBotSettings
+from aiohttp import web
 
 load_dotenv()
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
-bot = Bot(token=TOKEN)
-dp = Dispatcher(bot)
+bot = Bot(token=TOKEN, default=DefaultBotSettings(parse_mode=ParseMode.HTML))
+dp = Dispatcher()
+router = Router()
 
-@dp.message_handler(commands=["start"])
-async def start(msg: types.Message):
-    await msg.reply("🐶 ¡Bienvenido al bot oficial de $FDOG!\nEscribe /price para ver el precio actual.")
+# Comando /start
+@router.message(commands=["start"])
+async def start_handler(message: Message):
+    await message.answer("🐶 ¡Bienvenido al bot oficial de $FDOG!\nEscribe /price para ver el precio actual.")
 
-@dp.message_handler(commands=["price"])
-async def price(msg: types.Message):
+# Comando /price
+@router.message(commands=["price"])
+async def price_handler(message: Message):
     try:
         token_address = "78Csm5Dc2hQxqzVAe7TQ81bcNiAKc5ALxiJPZSTgpump"
         url = f"https://client-api.pump.fun/token/{token_address}"
         headers = {"User-Agent": "Mozilla/5.0"}
-        resp = requests.get(url, headers=headers)
-        data = resp.json()
+        response = requests.get(url, headers=headers)
+        data = response.json()
 
-        if "priceUsd" not in data or data["priceUsd"] is None:
-            await msg.reply("❗ El token aún no tiene datos de precio. Intenta más tarde.")
+        if not data.get("priceUsd"):
+            await message.answer("❗ El token aún no tiene datos de precio. Intenta más tarde.")
             return
 
-        price_usd = float(data["priceUsd"])
-        market_cap = float(data["marketCapUsd"])
+        price = float(data["priceUsd"])
+        cap = float(data["marketCapUsd"])
         holders = data.get("holderCount", "N/A")
 
-        response = (
-            f"💰 Precio actual de $FDOG: ${price_usd:.6f}\n"
-            f"📈 Market Cap: ${market_cap:,.0f}\n"
+        reply = (
+            f"💰 Precio de $FDOG: ${price:.6f}\n"
+            f"📈 Market Cap: ${cap:,.0f}\n"
             f"👥 Holders: {holders}\n"
-            f"🔗 Ver: https://pump.fun/coin/{token_address}"
+            f"🔗 https://pump.fun/coin/{token_address}"
         )
-        await msg.reply(response)
+        await message.answer(reply)
 
     except Exception as e:
-        await msg.reply(f"❗ Error obteniendo el precio:\n`{e}`")
+        await message.answer(f"❗ Error obteniendo el precio:\n<code>{e}</code>")
 
-# Servidor web para que Render no apague la app
+# Servidor web para Render
 async def handle(request):
-    return web.Response(text="Bot $FDOG funcionando!")
+    return web.Response(text="Bot $FDOG activo")
 
-app = web.Application()
-app.router.add_get("/", handle)
-
-async def start_web_app():
+async def start_web():
+    app = web.Application()
+    app.router.add_get("/", handle)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, '0.0.0.0', int(os.environ.get("PORT", 8000)))
     await site.start()
 
-loop = asyncio.get_event_loop()
-loop.create_task(start_web_app())
+# Lanzamiento del bot y servidor web
+async def main():
+    await start_web()
+    dp.include_router(router)
+    await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    executor.start_polling(dp)
+    asyncio.run(main())
+    
